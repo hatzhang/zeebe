@@ -38,6 +38,7 @@ pipeline {
     options {
         buildDiscarder(logRotator(daysToKeepStr: daysToKeep, numToKeepStr: numToKeep))
         timestamps()
+        timeout(time: 45, unit: 'MINUTES')
     }
 
     parameters {
@@ -47,7 +48,6 @@ pipeline {
 
     stages {
         stage('Prepare') {
-          timeout(2) {
             steps {
                 script {
                     commit_summary = sh([returnStdout: true, script: 'git show -s --format=%s']).trim()
@@ -71,11 +71,9 @@ pipeline {
                 }
 
             }
-          }
         }
 
         stage('Build (Java)') {
-          timeout(5) {
             steps {
                 container('maven') {
                     configFileProvider([configFile(fileId: 'maven-nexus-settings-zeebe', variable: 'MAVEN_SETTINGS_XML')]) {
@@ -83,11 +81,9 @@ pipeline {
                     }
                 }
             }
-          }
         }
 
         stage('Prepare Tests') {
-          timeout(3) {
             environment {
                 IMAGE = "camunda/zeebe"
                 VERSION = readMavenPom(file: 'parent/pom.xml').getVersion()
@@ -104,12 +100,10 @@ pipeline {
                     sh '.ci/scripts/docker/build_zeebe-hazelcast-exporter.sh'
                 }
             }
-          }
         }
 
 
         stage('Test') {
-          timeout(30) {
             parallel {
                 stage('Go') {
                     steps {
@@ -262,7 +256,6 @@ pipeline {
                     }
                 }
             }
-          }
         }
 
         stage('QA') {
@@ -307,23 +300,20 @@ pipeline {
 
         stage('Upload') {
             when { allOf { branch developBranchName; not { triggeredBy 'TimerTrigger' } } }
-            timeout(15) {
-              steps {
-                  retry(3) {
-                      container('maven') {
-                          configFileProvider([configFile(fileId: 'maven-nexus-settings-zeebe', variable: 'MAVEN_SETTINGS_XML')]) {
-                              sh '.ci/scripts/distribution/upload.sh'
-                          }
-                      }
-                  }
-              }
+            steps {
+                retry(3) {
+                    container('maven') {
+                        configFileProvider([configFile(fileId: 'maven-nexus-settings-zeebe', variable: 'MAVEN_SETTINGS_XML')]) {
+                            sh '.ci/scripts/distribution/upload.sh'
+                        }
+                    }
+                }
             }
         }
 
         stage('Post') {
             when { not { triggeredBy 'TimerTrigger' } }
 
-          timeout(5) {
             parallel {
                 stage('Docker') {
                     when { branch developBranchName }
@@ -344,7 +334,6 @@ pipeline {
                     }
                 }
             }
-          }
         }
     }
 
